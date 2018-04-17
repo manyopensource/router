@@ -1,4 +1,4 @@
-<?php namespace Maer\Router;
+<?php namespace Maer\Router\Exceptions;
 
 use Exception;
 
