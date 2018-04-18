@@ -15,6 +15,20 @@ class RouteCollection
      */
     protected $names = [];
 
+    /**
+     * @var Tester
+     */
+    protected $tester;
+
+
+    /**
+     * @param Tester $tester
+     */
+    public function __construct(Tester $tester)
+    {
+        $this->tester = $tester;
+    }
+
 
     /**
      * Add a route
@@ -46,21 +60,59 @@ class RouteCollection
      * Get a route by name
      *
      * @param  string $name
-     * @param  array  $params
+     * @param  array  $args
      *
      * @return string
      */
-    public function getRouteByName($name, array $params = [])
+    public function getRouteByName($name, array $args = [])
     {
         if (empty($this->names[$name])) {
             return null;
         }
 
-        if (!$route) {
-            return null;
+        $pattern = $this->names[$name];
+
+        if (strpos($pattern, '(') === false) {
+            // If we don't have any route parameters, just return the pattern
+            // straight off. No need for any regex stuff.
+            return $pattern;
         }
 
-        return $this->routes[$name];
+        // Convert all placeholders to %o = optional and %r = required
+        $from    = ['/(\([^\/]+[\)]+[\?])/', '/(\([^\/]+\))/'];
+        $to      = ['%o', '%r'];
+        $pattern = preg_replace($from, $to, $pattern);
+
+        $frags = explode('/', trim($pattern, '/'));
+        $url   = [];
+
+        // Loop thru the pattern fragments and insert the arguments
+        foreach ($frags as $frag) {
+            if ($frag == '%r') {
+                if (!$args) {
+                    // A required parameter, but no more arguments.
+                    throw new \Exception('Missing route parameters');
+                }
+
+                $url[] = array_shift($args);
+                continue;
+            }
+
+            if ($frag == "%o") {
+                if (!$args) {
+                    // No argument for the optional parameter,
+                    // just continue the iteration.
+                    continue;
+                }
+
+                $url[] = array_shift($args);
+                continue;
+            }
+
+            $url[] = $frag;
+        }
+
+        return '/' . implode('/', $url);
     }
 
 
@@ -73,6 +125,91 @@ class RouteCollection
      */
     public function getRoutes($host = null)
     {
-        return $this->routes;
+        $routes = $this->routes['*'] ?? [];
+
+        if ($host) {
+            foreach ($this->routes as $name => $items) {
+                if ('*' === $name) {
+                    continue;
+                }
+
+                if ($this->tester->match($name, $host)) {
+                    $routes = array_replace_recursive($routes, $items);
+                }
+            }
+        }
+
+        return $routes;
+    }
+
+
+    /**
+     * Get matching route
+     *
+     * @param  string $method
+     * @param  string $path
+     *
+     * @return object
+     *
+     * @throws MethodNotAllowedException
+     * @throws NotFoundException
+     */
+    public function getMatchingRoute($method, $path, $host = null)
+    {
+        $method   = strtolower($method);
+        $response = [
+            'status' => Router::OK,
+            'match'  => [
+                'args' => []
+            ],
+        ];
+
+        foreach ($this->getRoutes($host) as $pattern => $route) {
+            $matches = $this->tester->match($pattern, $path);
+
+            if ($matches) {
+                $match = [];
+
+                if (!empty($route[$method])) {
+                    $match = $route[$method];
+                } else if (!empty($route['any'])) {
+                    $match = $route['any'];
+                }
+
+                $args = $this->getMatchArgs($matches);
+
+                if (!$match) {
+                    $response['status'] = Router::METHOD_NOT_ALLOWED;
+                }
+
+                $match['args']     = $args;
+                $response['match'] = $match;
+                return $response;
+            }
+        }
+
+        $response['status'] = Router::NOT_FOUND;
+        return $response;
+    }
+
+
+    /**
+     * Get and clean route arguments
+     *
+     * @param  array $match
+     *
+     * @return array
+     */
+    protected function getMatchArgs(array $match)
+    {
+        // Remove the first element, the matching regex
+        array_shift($match);
+
+        // Iterate through the arguments and remove any unwanted slashes
+        foreach ($match as &$arg) {
+            $arg = trim($arg, '/');
+        }
+
+        return $match;
     }
 }

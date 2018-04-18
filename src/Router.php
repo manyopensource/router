@@ -9,6 +9,13 @@ use Maer\Router\Exceptions\NotFoundException;
 class Router
 {
     /**
+     * Status codes
+     */
+    const OK = 200;
+    const NOT_FOUND = 404;
+    const METHOD_NOT_ALLOWED = 405;
+
+    /**
      * @var RouteCollection
      */
     protected $routes;
@@ -22,6 +29,11 @@ class Router
      * @var Closure|Resolver
      */
     protected $resolver;
+
+    /**
+     * @var Tester
+     */
+    protected $tester;
 
     /**
      * @var array
@@ -51,26 +63,61 @@ class Router
         'methodNotAllowed' => null,
     ];
 
-    /**
-     * @var array
-     */
-    protected $patterns  = [
-        'all'      => '.*',
-        'alphanum' => '[a-zA-Z0-9]+',
-        'alpha'    => '[a-zA-Z]+',
-        'num'      => '[\-]?[\d\,\.]+',
-        'any'      => '[^\/]+',
-    ];
-
 
     /**
      * @param Resolver|null $resolver
      */
     public function __construct(Resolver $resolver = null)
     {
-        $this->routes = new RouteCollection;
-        $this->groups = new Groups;
         $this->resolver($resolver ?? new Resolver);
+        $this->tester = new Tester;
+        $this->routes = new RouteCollection($this->tester);
+        $this->groups = new Groups;
+
+        // Set the default error handlers
+        $this->notFound = function () {
+            throw new NotFoundException;
+        };
+
+        $this->methodNotAllowed = function () {
+            throw new MethodNotAllowedException;
+        };
+    }
+
+
+    /**
+     * Add a route with a specific HTTP verb
+     *
+     * @param  string $method
+     * @param  array  $args
+     *
+     * @throws Exception If the method isn't one of the registerd HTTP verbs
+     *
+     * @return $this
+     */
+    public function __call($method, $args)
+    {
+        $method = strtoupper($method);
+        $verbs  = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS', 'CONNECT', 'TRACE', 'ANY'];
+
+        if (!in_array($method, $verbs)) {
+            throw new Exception("Call to undefined method '{$method}'");
+        }
+
+        if (isset($args[0]) && is_array($args[0])) {
+            if (count($args[0]) > 1) {
+                if (!isset($args[2]) || !is_array($args[2])) {
+                    $args[2] = [];
+                }
+                $args[2]['name'] = $args[0][1];
+            }
+
+            $args[0] = $args[0][0];
+        }
+
+
+        array_unshift($args, $method);
+        return call_user_func_array([$this, 'add'], $args);
     }
 
 
@@ -98,12 +145,10 @@ class Router
      */
     public function add($method, $pattern, $callback, array $options = [])
     {
-        $pattern = '/' . trim($pattern, '/');
-        $route   = $this->groups->appendGroupInfo($pattern, $options);
+        $route            = $this->groups->appendGroupInfo($pattern, $options);
+        $route['methods'] = !is_array($method) ? [$method] : $method;
 
-        $route['methods']  = !is_array($method) ? [$method] : $method;
-
-        // Add the callback to the stack and get the index
+        // Add the callback to the stack and replace it with the index
         $this->callbacks[] = $callback;
         $route['callback'] = count($this->callbacks) - 1;
 
@@ -138,112 +183,32 @@ class Router
      */
     public function getMatch($method = null, $path = null, $host = null)
     {
-        $method = strtolower($method ?? $this->getRequestMethod());
-        $path   = '/' . trim($path ?? $this->getRequestPath(), '/');
-        $host   = $host ?? $this->getHost();
+        $method   = strtolower($method ?? $this->getRequestMethod());
+        $path     = '/' . trim($path ?? $this->getRequestPath(), '/');
+        $host     = $host ?? $this->getHost();
+        $response = $this->routes->getMatchingRoute($method, $path, $host);
 
-        $routes = $this->routes->getRoutes($host);
-
-        foreach ($this->getRoutes() as $pattern => $route) {
-            preg_match($this->regexifyPattern($pattern), $path, $matches);
-
-            if ($matches) {
-                $match = [];
-                if (!empty($route[$method])) {
-                    $match = $route[$method];
-                } else if (!empty($route['any'])) {
-                    $match = $route['any'];
+        switch ($response['status']) {
+            case self::METHOD_NOT_ALLOWED:
+                http_response_code(self::METHOD_NOT_ALLOWED);
+                $response['match']['callback'] = $this->methodNotAllowed;
+                break;
+            case self::NOT_FOUND:
+                http_response_code(self::NOT_FOUND);
+                $response['match']['callback'] = $this->notFound;
+                break;
+            case self::OK:
+                if (is_int($response['match']['callback'])) {
+                    $response['match']['callback'] = $this->callbacks[$response['match']['callback']];
                 }
-
-                $args = $this->getMatchArgs($matches);
-
-                if (!$match) {
-                    if (!$this->methodNotAllowed) {
-                        throw new MethodNotAllowedException;
-                    }
-
-                    http_response_code(405);
-                    $match['callback'] = $this->methodNotAllowed;
-                }
-
-                $match['args']     = $args;
-                $match['callback'] = is_int($match['callback'])
-                    ? $this->callbacks[$match['callback']]
-                    : $match['callback'];
-
-                return $match;
-            }
+                break;
+            default:
+                // It should never come to this point, but just in case.
+                throw new \Exception('An unknown exception occurred when matching routes');
+                break;
         }
 
-        if (!$this->notFound) {
-            throw new NotFoundException;
-        }
-
-        http_response_code(404);
-
-        $match = [
-            'callback' => $this->notFound,
-            'args'     => [],
-        ];
-
-        return $match;
-    }
-
-
-    protected function getRoutes()
-    {
-
-    }
-
-
-    /**
-     * Get and clean route arguments
-     *
-     * @param  array $match
-     *
-     * @return array
-     */
-    protected function getMatchArgs(array $match)
-    {
-        // Remove the first element, the matching regex
-        array_shift($match);
-
-        // Iterate through the arguments and remove any unwanted slashes
-        foreach ($match as &$arg) {
-            $arg = trim($arg, '/');
-        }
-
-        return $match;
-    }
-
-
-    /**
-     * Replace placeholders to regular expressions
-     *
-     * @param  string $pattern
-     *
-     * @return string
-     */
-    protected function regexifyPattern($pattern)
-    {
-        preg_match_all('/(\/?)\(:([^)]*)\)(\??)/', $pattern, $regExPatterns, PREG_SET_ORDER, 0);
-
-        $pattern = preg_quote($pattern, '/');
-
-        foreach ($regExPatterns as $regExPattern) {
-            if (!empty($regExPattern[2]) && key_exists($regExPattern[2], $this->patterns)) {
-                $replacement = sprintf(
-                    '(%s%s)%s',
-                    empty($regExPattern[1]) ? '' : '\/',
-                    $this->patterns[$regExPattern[2]],
-                    $regExPattern[3]
-                );
-
-                $pattern = str_replace(preg_quote($regExPattern[0], '/'), $replacement, $pattern);
-            }
-        }
-
-        return "/^$pattern$/";
+        return $response['match'];
     }
 
 
@@ -273,20 +238,20 @@ class Router
 
         // Run all before filters
         foreach ($match['before'] ?? [] as $filter) {
-            $response = $this->executeCallback($match['callback'], $match['args'], true);
-            if ($response) {
+            $response = $this->executeCallback($filter, $match['args'], true);
+            if (!is_null($response)) {
                 // This returned something. Stop and return that response.
                 return $response;
             }
         }
 
         // Execute the route callback
-        $response = $this->executeCallback($match['callback'], $match['args']);
+        $response = $this->executeCallback($match['callback'], ($match['args'] ?? []));
 
         // Run all the after filters, add the response (as a reference) as the first param to all filters
-        $args = array_merge([&$response], $match['args']);
+        $args = array_merge([&$response], ($match['args'] ?? []));
         foreach ($match['after'] ?? [] as $filter) {
-            $this->executeCallback($match['callback'], $args, true);
+            $this->executeCallback($filter, $args, true);
         }
 
         return $response;
@@ -294,25 +259,25 @@ class Router
 
 
     /**
-     * Get registered patterns
+     * Get registered tokens
      *
      * @return array
      */
-    public function getPatterns()
+    public function getTokens()
     {
-        return $this->patterns;
+        return $this->tester->getTokens();
     }
 
 
     /**
-     * Add regex pattern
+     * Add regex token
      *
      * @param string $name
      * @param string $pattern
      */
-    public function addPattern($name, $pattern)
+    public function addToken($name, $pattern)
     {
-        $this->patterns[":{$name}"] = $pattern;
+        $this->tester->addToken($name, $pattern);
     }
 
 
@@ -397,6 +362,10 @@ class Router
      */
     public function executeCallback($cb, array $args = [], $filter = false)
     {
+        if ($filter && is_string($cb)) {
+            $cb = $this->filters[$cb] ?? null;
+        }
+
         if ($cb instanceof Closure) {
             return call_user_func_array($cb, $args);
         }
@@ -407,7 +376,7 @@ class Router
 
         if (is_array($cb) && count($cb) == 2) {
             if (!is_object($cb[0])) {
-                $cb = $this->resolveCallback($cb);
+                $cb = $this->resolver->resolve($cb);
             }
 
             if (isset($cb[0], $cb[1]) && is_object($cb[0]) && !method_exists($cb[0], $cb[1])) {
@@ -455,6 +424,6 @@ class Router
      */
     public function getRoute($name, array $args = [])
     {
-        return $this->routes->getRouteByName($name);
+        return $this->routes->getRouteByName($name, $args);
     }
 }

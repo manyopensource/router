@@ -60,8 +60,9 @@ class Groups
      */
     public function appendGroupInfo($pattern, array $options)
     {
-        $options = $this->appendFilters($options);
-        $options['pattern'] = rtrim($this->prefix . '/' . trim($pattern, '/'), '/');
+        $pattern            = '/' . trim($pattern, '/');
+        $options            = $this->appendFilters($options);
+        $options['pattern'] = '/' . trim($this->prefix . $pattern, '/');
         $options['host']    = $options['host'] ?? $this->host;
 
         if (empty($options['host'])) {
@@ -111,7 +112,7 @@ class Groups
     protected function parseFilters($filters)
     {
         if ($filters && is_string($filters)) {
-            return explode('|', $options[$type]);
+            return explode('|', $filters);
         }
 
         if (is_array($filters)) {
