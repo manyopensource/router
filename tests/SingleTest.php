@@ -20,6 +20,6 @@ class SingleTest extends PHPUnit_Framework_TestCase
 
         $this->assertEquals('GET /test', $r->dispatch('GET', '/test'));
         $this->assertEquals('GET /test', $r->dispatch('GET', '/test/hello'));
-        #$this->assertEquals('POST /test', $r->dispatch('POST', '/test'));
+        $this->assertEquals('POST /test', $r->dispatch('POST', '/test'));
     }
 }

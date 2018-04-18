@@ -159,36 +159,45 @@ class RouteCollection
         $method   = strtolower($method);
         $response = [
             'status' => Router::OK,
-            'match'  => [
-                'args' => []
-            ],
+            'match'  => [],
         ];
 
+        $notAllowd = [];
+
         foreach ($this->getRoutes($host) as $pattern => $route) {
+            $ok = true;
             $matches = $this->tester->match($pattern, $path);
 
             if ($matches) {
-                $match = [];
+                $match         = [];
+                $args          = $this->getMatchArgs($matches);
 
                 if (!empty($route[$method])) {
                     $match = $route[$method];
                 } else if (!empty($route['any'])) {
                     $match = $route['any'];
+                } else {
+                    $notAllowed = $args;
+                    $ok = false;
                 }
 
-                $args = $this->getMatchArgs($matches);
-
-                if (!$match) {
-                    $response['status'] = Router::METHOD_NOT_ALLOWED;
-                }
-
-                $match['args']     = $args;
+                $match['args'] = $args;
                 $response['match'] = $match;
-                return $response;
+
+                if ($ok) {
+                    return $response;
+                }
+
+                // We might find a better matching route so let's keep checking.
+                // If we don't, we have our NOT ALLOWED info.
             }
         }
 
-        $response['status'] = Router::NOT_FOUND;
+        $response['match']['args'] = $notAllowed;
+        $response['status'] = $notAllowed
+            ? Router::METHOD_NOT_ALLOWED
+            : Router::NOT_FOUND;
+
         return $response;
     }
 
