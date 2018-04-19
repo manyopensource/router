@@ -1,5 +1,7 @@
 <?php namespace Maer\Router;
 
+use Maer\Router\Exceptions\ControllerNotFoundException;
+
 class Resolver
 {
     public function resolve(array $callback)

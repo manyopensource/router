@@ -249,9 +249,18 @@ class Router
         $response = $this->executeCallback($match['callback'], ($match['args'] ?? []));
 
         // Run all the after filters, add the response (as a reference) as the first param to all filters
+
         $args = array_merge([&$response], ($match['args'] ?? []));
-        foreach ($match['after'] ?? [] as $filter) {
-            $this->executeCallback($filter, $args, true);
+
+        if (!empty($match['args'])) {
+            foreach ($match['after'] ?? [] as $filter) {
+                #var_dump($args);
+                #exit;
+                $after = $this->executeCallback($filter, $args, true);
+                if ($after) {
+                    $response = $after;
+                }
+            }
         }
 
         return $response;
@@ -387,11 +396,20 @@ class Router
             return call_user_func_array($cb, $args);
         }
 
-        if (is_string($cb) && strpos($cb, "::") !== false) {
-            return call_user_func_array($cb, $args);
+        if (is_string($cb)) {
+            $check = false;
+
+            if (strpos($cb, "::") !== false) {
+                $parts = explode('::', $cb);
+                $check = $parts[0] && $parts[1] && class_exists($parts[0]) && method_exists($parts[0], $parts[1]);
+            }
+
+            if ($check || function_exists($cb)) {
+                return call_user_func_array($cb, $args);
+            }
         }
 
-        throw new InvalidArgumentException('Invalid callback');
+        throw new ControllerNotFoundException('Invalid controller');
     }
 
 

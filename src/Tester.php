@@ -44,7 +44,8 @@ class Tester
      */
     public function match($pattern, $string)
     {
-        preg_match($this->regexifyPattern($pattern), $string, $matches);
+        $pattern = $this->regexifyPattern($pattern);
+        preg_match($pattern, $string, $matches);
         return $matches;
     }
 
@@ -74,6 +75,8 @@ class Tester
                 $pattern = str_replace(preg_quote($regExPattern[0], '/'), $replacement, $pattern);
             }
         }
+
+        $pattern = str_replace('\?', '?', $pattern);
 
         return "/^$pattern$/";
     }

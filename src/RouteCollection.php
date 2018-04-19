@@ -2,6 +2,7 @@
 
 use Maer\Router\Exceptions\MethodNotAllowedException;
 use Maer\Router\Exceptions\NotFoundException;
+use InvalidArgumentException;
 
 class RouteCollection
 {
@@ -91,7 +92,7 @@ class RouteCollection
             if ($frag == '%r') {
                 if (!$args) {
                     // A required parameter, but no more arguments.
-                    throw new \Exception('Missing route parameters');
+                    throw new InvalidArgumentException('Missing route parameters');
                 }
 
                 $url[] = array_shift($args);
@@ -162,22 +163,24 @@ class RouteCollection
             'match'  => [],
         ];
 
-        $notAllowd = [];
+        $requestArgs = [];
+        $notAllowed  = false;
 
         foreach ($this->getRoutes($host) as $pattern => $route) {
             $ok = true;
             $matches = $this->tester->match($pattern, $path);
 
             if ($matches) {
-                $match         = [];
-                $args          = $this->getMatchArgs($matches);
+                $match = [];
+                $args  = $this->getMatchArgs($matches);
 
                 if (!empty($route[$method])) {
                     $match = $route[$method];
                 } else if (!empty($route['any'])) {
                     $match = $route['any'];
                 } else {
-                    $notAllowed = $args;
+                    $requestArgs = $args;
+                    $notAllowed  = true;
                     $ok = false;
                 }
 
@@ -193,7 +196,7 @@ class RouteCollection
             }
         }
 
-        $response['match']['args'] = $notAllowed;
+        $response['match']['args'] = $requestArgs;
         $response['status'] = $notAllowed
             ? Router::METHOD_NOT_ALLOWED
             : Router::NOT_FOUND;
