@@ -250,13 +250,12 @@ class Router
 
         // Run all the after filters, add the response (as a reference) as the first param to all filters
 
-        $args = array_merge([&$response], ($match['args'] ?? []));
+        if (!empty($match['after'])) {
+            $args = array_merge([&$response], ($match['args'] ?? []));
 
-        if (!empty($match['args'])) {
             foreach ($match['after'] ?? [] as $filter) {
-                #var_dump($args);
-                #exit;
                 $after = $this->executeCallback($filter, $args, true);
+
                 if ($after) {
                     $response = $after;
                 }

@@ -12,24 +12,20 @@ class FilterTest extends PHPUnit_Framework_TestCase
      */
     public function testBeforeFilter()
     {
-        $test = "unchanged";
+        State::set('before', 0);
 
         $r = new Router;
 
         // Normal
         $r->filter('test', function () {
-            global $test;
-            $test = 'changed';
+            State::set('before', 1);
         });
 
-        $r->group(['before' => 'test'], function ($r) {
-            $r->get('/test', function () {
-                global $test;
-                return "test:{$test}";
-            });
-        });
+        $r->get('/test', function () {
+            return "test:" . State::get('before');
+        }, ['before' => 'test']);
 
-        $this->assertEquals('test:changed', $r->dispatch('GET', '/test'));
+        $this->assertEquals('test:1', $r->dispatch('GET', '/test'));
     }
 
     /**
@@ -40,15 +36,13 @@ class FilterTest extends PHPUnit_Framework_TestCase
         $r = new Router;
 
         // Break
-        $r->filter('test2', function () {
+        $r->filter('test', function () {
             return 'no';
         });
 
-        $r->group(['before' => 'test2'], function ($r) {
-            $r->get('/test', function () {
-                return "yes";
-            });
-        });
+        $r->get('/test', function () {
+            return "yes";
+        }, ['before' => 'test']);
 
         $this->assertEquals('no', $r->dispatch('GET', '/test'));
     }
@@ -58,26 +52,21 @@ class FilterTest extends PHPUnit_Framework_TestCase
      */
     public function testMultipleBeforeFilters()
     {
-        $test = [];
+        State::set('before.multiple', []);
 
         $r = new Router;
 
         $r->filter('first', function () {
-            global $test;
-            $test[] = 1;
+            State::push('before.multiple', 1);
         });
 
         $r->filter('second', function () {
-            global $test;
-            $test[] = 2;
+            State::push('before.multiple', 2);
         });
 
-        $r->group(['before' => 'first|second'], function ($r) {
-            $r->get('/test', function () {
-                global $test;
-                return implode(',', $test);
-            });
-        });
+        $r->get('/test', function () {
+            return implode(',', State::get('before.multiple'));
+        }, ['before' => 'first|second']);
 
         $this->assertEquals('1,2', $r->dispatch('GET', '/test'));
     }
@@ -87,76 +76,65 @@ class FilterTest extends PHPUnit_Framework_TestCase
      */
     public function xtestAfterFilter()
     {
-        $test2 = "unchanged";
+        State::set('after', 0);
 
         $r = new Router;
 
         // Normal
         $r->filter('test', function () {
-            global $test2;
-            $test2 = 'changed';
+            State::set('after', 1);
         });
 
-        $r->group(['after' => 'test'], function ($r) {
-            $r->get('/test', function () {
-                return "/test";
-            });
-        });
+        $r->get('/test-after', function () {
+            return "/test";
+        }, ['after' => 'test']);
 
-        $response = $r->dispatch('GET', '/test');
+        $response = $r->dispatch('GET', '/test-after');
 
-        global $test2;
         $this->assertEquals('/test', $response);
-        $this->assertEquals('changed', $test2);
+        $this->assertEquals('1', State::get('after'));
     }
 
     /**
      * Test before filters that return a value
      */
-    public function xtestAfterFilterReturn()
+    public function testAfterFilterReturn()
     {
         $r = new Router;
 
         // Break
-        $r->filter('test2', function ($response = null) {
-            return 'no';
+        $r->filter('test', function ($response) {
+            return 'no' . $response;
         });
 
-        $r->group(['before' => 'test2'], function ($r) {
-            $r->get('/test', function () {
-                return "yes";
-            });
-        });
+        $r->get('/test-after-return', function () {
+            return "yes";
+        }, ['after' => 'test']);
 
-        $this->assertEquals('no', $r->dispatch('GET', '/test'));
+        $this->assertEquals('noyes', $r->dispatch('GET', '/test-after-return'));
     }
 
     /**
      * Test multiple filter
      */
-    public function xtestMultipleAfterFilters()
+    public function testMultipleAfterFilters()
     {
-        $test3 = [];
-
         $r = new Router;
 
-        $r->filter('first', function () {
-            global $test3;
-            $test3[] = 1;
+        $r->filter('first', function ($response) {
+            $response .= 1;
+            return $response;
         });
 
-        $r->filter('second', function () {
-            global $test3;
-            $test3[] = 2;
+        $r->filter('second', function ($response) {
+            $response .= 2;
+            return $response;
         });
 
-        $r->group(['before' => 'first|second'], function ($r) {
-            $r->get('/test', function () {
-                global $test3;
-                return implode(',', $test3);
-            });
-        });
+        $r->get('/test', function () {
+            return '';
+        }, ['after' => 'first|second']);
 
-        $this->assertEquals('1,2', $r->dispatch('GET', '/test'));
+        $this->assertEquals('12', $r->dispatch('GET', '/test'));
     }
 }

@@ -106,24 +106,3 @@ class CallbackTest extends PHPUnit_Framework_TestCase
         $r->dispatch('get', '/test');
     }
 }
-
-/**
- * Dummy functions for testing callbacks
- */
-function controllerFunc()
-{
-    return 'func:foo';
-}
-
-class Controller
-{
-    public static function staticIndex()
-    {
-        return 'static:foo';
-    }
-
-    public function index()
-    {
-        return 'instance:foo';
-    }
-}
