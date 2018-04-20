@@ -19,13 +19,11 @@ A small, simple, extendable one-file PHP router with groups, filters and named r
 * [Named routes](#named-routes)
 * [Grouping routes](#grouping-routes)
     * [Group prefix](#group-prefix)
+* [Host specific routes](#host-specific-routes)
 * [Dispatch the router](#dispatch-the-router)
     * [Not found](#not-found)
     * [Method not allowed](#method-not-allowed)
 * [Adding a custom callback resolver](#adding-a-custom-callback-resolver)
-
-
-
 
 
 ## Install
@@ -46,26 +44,26 @@ include '/path/to/vendor/autoload.php';
 $r = new Maer\Router\Router;
 
 // Define routes
-$r->get('/', function() {
+$r->get('/', function () {
     return "Hello there";
 });
 
 // It also works with:
-$r->post('/', function() {});
-$r->put('/', function() {});
-$r->delete('/', function() {});
-$r->patch('/', function() {});
-$r->options('/', function() {});
-$r->head('/', function() {});
-$r->connect('/', function() {});
-$r->trace('/', function() {});
-$r->any('/', function() {}); // Catches all methods
+$r->post('/', function () {});
+$r->put('/', function () {});
+$r->delete('/', function () {});
+$r->patch('/', function () {});
+$r->options('/', function () {});
+$r->head('/', function () {});
+$r->connect('/', function () {});
+$r->trace('/', function () {});
+$r->any('/', function () {}); // Catches all methods
 
 // ...or if you want to use some non-standard HTTP verb
-$r->add('SOMEVERB', '/', function() {});
+$r->add('SOMEVERB', '/', function () {});
 
 // ...or if you want to define multiple verbs at once
-$r->add(['GET', 'POST', ...], function() {});
+$r->add(['GET', 'POST', ...], function () {});
 
 // Dispatch the router
 $response = $r->dispatch();
@@ -79,40 +77,45 @@ There are some placeholders you can use for route parameters. All parameters wil
 
 ```php
 // Match any alpha [a-z] character
-$r->get('/something/(:alpha)', function($param) {
+$r->get('/something/(:alpha)', function ($param) {
     // Do stuff
 });
 
 // Match any numeric [0-9.,] character. It can also start with a -
-$r->get('/something/(:num)', function($param) {
+$r->get('/something/(:num)', function ($param) {
     // Do stuff
 });
 
 // Match any alphanumeric [a-z0-9] character
-$r->get('/something/(:alphanum)', function($param) {
+$r->get('/something/(:alphanum)', function ($param) {
     // Do stuff
 });
 
 // Match any character (except /) [^/] character
-$r->get('/something/(:any)', function($param) {
+$r->get('/something/(:any)', function ($param) {
     // Do stuff
 });
 
 // Catch-all. Match all routes, including / (.*)
-$r->get('/something/(:any)', function($param) {
+$r->get('/something/(:any)', function ($param) {
     // Do stuff
 });
 
 // Append ? to making a parameter optional.
-$r->get('/something/(:alpha)?', function($param = null){
+$r->get('/something/(:alpha)?', function ($param = null){
     // Matches /something and /something/anything
 });
 
 // Combine mutliple placeholders
-$r->get('/something/(:alpha)/(:any)/(:alphanum)?', function($param, $param2, $param3 = null) {
+$r->get('/something/(:alpha)/(:any)/(:alphanum)?', function ($param, $param2, $param3 = null) {
     // Do stuff
 });
 
+// Create a custom placeholder
+$r->addToken('foo', '[a-z]{3}'); // Matches three alpha characters
+$r->get('/something/(:foo)', function () {
+    // Do stuff
+});
 ```
 
 ## Route callbacks
@@ -121,7 +124,7 @@ Route callbacks can be defined in different ways:
 
 ```php
 // Anonymous function
-$r->get('/', function() {
+$r->get('/', function () {
     // Something
 });
 
@@ -143,21 +146,21 @@ There are `before` and `after` filters:
 
 ```php
 // Defining filters
-$r->filter('myfilter', function() {
+$r->filter('myfilter', function () {
     // Do some magic stuff.
 });
 
-$r->filter('anotherfilter', function() {
+$r->filter('anotherfilter', function () {
     // Do some magic stuff.
 });
 
 // Add filter to your routes
-$r->get('/something/', function() {
+$r->get('/something/', function () {
 
 }, ['before' => 'myfilter', 'after' => 'anotherfilter']);
 
 // Add multiple filters by combining them with |
-$r->get('/something/', function() {
+$r->get('/something/', function () {
 
 }, ['before' => 'myfilter|anotherfilter']);
 
@@ -176,7 +179,7 @@ Add a name to any route
 
 ```php
 // Name a route
-$r->get('/something', function() {
+$r->get('/something', function () {
 
 }, ['name' => 'some-page']);
 
@@ -185,7 +188,7 @@ echo $r->getRoute('some-page');
 // Returns: /something
 
 // With route parameters
-$r->get('/something/(:any)/(:any)', function($param1, $param2) {
+$r->get('/something/(:any)/(:any)', function ($param1, $param2) {
 
 });
 
@@ -201,9 +204,9 @@ If you don't pass enough arguments to cover all required parameters, an exceptio
 Instead of adding the same filters over and over for many routes, it's easier to group them together.
 
 ```php
-$r->group(['before' => 'a_before_filter'], function($r) {
+$r->group(['before' => 'a_before_filter'], function ($r) {
 
-    $r->get('/', function() {
+    $r->get('/', function () {
         //....
     });
 
@@ -221,22 +224,52 @@ When defining a group, you can add `before` and `after` filters, just like you d
 To add the same prefix to a group, use the `prefix` argument.
 
 ```php
-$r->group(['prefix' => '/admin'], function() {
+$r->group(['prefix' => '/admin'], function ($r) {
 
     // This matches: /admin
-    $r->get('/', function() {
+    $r->get('/', function () {
 
     });
 
     // This matches: /admin/something
-    $r->get('/something', function() {
+    $r->get('/something', function () {
 
     });
 
 });
+
+$r->group(['prefix' => '/example/(:any)'], function ($r) {
+    // Example match: /example/some-parameter
+    $r->get('/', function ($param) {
+        // $param would now contain "some-parameter"
+    });
+});
 ```
 
-You can mix `before`, `after` and `prefix` when creating groups.
+You can mix `before`, `after` and `prefix` when creating groups. You can also have groups in groups.
+
+### Host specific routes
+
+You can define what hostname a route should belong to.
+
+Example: You have multiple hostnames (domains) pointing to the same app, but some routes should only be available for some specific host
+
+```php
+$r->group(['host' => 'foo.com'], function ($r) {
+    // This matches: foo.com/foo
+    $r->get('/foo', function () {
+
+    });
+});
+```
+
+Just like filters, you can set a host on a specific route directly:
+
+```php
+$r->get('/foo', function () {
+    // Do something
+}, ['host' => 'foo.com']);
+```
 
 ## Dispatch the router
 
@@ -249,8 +282,8 @@ $response = $r->dispatch('GET', '/some/url');
 If you rather trigger all the callbacks (filters and route callbacks) yourself, if you, for example, are using an IoC container, call the `$r->getMatch()` method instead and you will get the matched route object back.
 
 ```php
-$r->get('/', function() {
-
+$r->get('/', function () {
+    // Do something
 }, ['before' => 'beforefilter', 'after' => 'afterfilter', 'name' => 'somename']);
 
 $route = $r->getMatch('GET', '/');
@@ -274,10 +307,10 @@ $response = $r->executeCallback('beforefilter');
 
 ### Not found
 
-If there is no match, a `Maer\Router\NotFoundException` will be thrown. You can register a callback that will be executed instead, using the `$router->notFound()`-method:
+If there is no match, a `Maer\Router\Exceptions\NotFoundException` will be thrown. You can register a callback that will be executed instead, using the `$router->notFound()`-method:
 
 ```php
-$r->notFound(function() {
+$r->notFound(function () {
     return "Ops! The page was not found!";
 });
 
@@ -286,10 +319,10 @@ $r->notFound(function() {
 
 ### Method not allowed
 
-If there is a url match but with the wrong http verb, a `Maer\Router\MethodNotAllowedException` will be thrown. You can register a callback that will be executed instead, using the `$router->methodNotAllowed()`-method:
+If there is a url match but with the wrong http verb, a `Maer\Router\Exceptions\MethodNotAllowedException` will be thrown. You can register a callback that will be executed instead, using the `$router->methodNotAllowed()`-method:
 
 ```php
-$r->methodNotAllowed(function() {
+$r->methodNotAllowed(function () {
     return "Ops! Method not allowed!";
 });
 
@@ -300,10 +333,12 @@ $r->methodNotAllowed(function() {
 
 If your callback is in the format of `['Classname', 'method']`, you might want to customize how it's resolved. This is handy if you, for example, are using some kind of IoC with dependency injection.
 
-To create your custom resolver, use the `$r->resolver()`-method. Example:
+To create your custom resolver, use the `$r->resolver()`-method.
+
+Pass an anonymous function:
 
 ```php
-$r->resolver(function($callback) use($container) {
+$r->resolver(function ($callback) use($container) {
     // The argument will always be an array with ['Class', 'method']
     return [
         $container->get($callback[0]),
@@ -311,6 +346,38 @@ $r->resolver(function($callback) use($container) {
     ];
 });
 ```
+
+If you rather build your resolver as a class, then you need to extend `Maer\Router\Resolver`:
+
+```php
+class MyResolver extends Maer\Router\Resolver
+{
+    public function resolver(array $callback)
+    {
+        return [
+            $this->yourContainer->get($callback[0]),
+            $container[1]
+        ];
+    }
+}
+```
+
+Now you can register it either by passing it to `resolver()`:
+
+```php
+$r->resolver(new MyResolver);
+```
+
+or in the constructor when you instantiate the router:
+
+```php
+use Maer\Router\Router;
+
+$r = new Router(new MyResolver);
+```
+
+Regardless how your resolver is built, it must return an array with the class instance as the first element and the method name as a string as the second element.
+
 ---
 If you have any questions, suggestions or issues, let me know!
 
