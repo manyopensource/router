@@ -1,8 +1,8 @@
 <?php namespace Maer\Router;
 
 use Closure;
+use Exception;
 use InvalidArgumentException;
-use Maer\Router\Exceptions\ControllerNotFoundException;
 use Maer\Router\Exceptions\MethodNotAllowedException;
 use Maer\Router\Exceptions\NotFoundException;
 
@@ -91,7 +91,7 @@ class Router
      * @param  string $method
      * @param  array  $args
      *
-     * @throws Exception If the method isn't one of the registerd HTTP verbs
+     * @throws Exception If the method isn't one of the registered HTTP verbs
      *
      * @return $this
      */
@@ -124,7 +124,7 @@ class Router
     /**
      * Add a route group
      *
-     * @param  array   $option
+     * @param  array   $options
      * @param  Closure $callback
      */
     public function group(array $options, Closure $callback)
@@ -140,7 +140,7 @@ class Router
      *
      * @param string $method
      * @param string $pattern
-     * @param mixed  $callback
+     * @param callable|string  $callback
      * @param array  $options
      */
     public function add($method, $pattern, $callback, array $options = [])
@@ -161,12 +161,29 @@ class Router
      *
      * @param  string $name
      * @param  mixed  $callback
-     *
-     * @return $this
      */
     public function filter($name, $callback)
     {
         $this->filters[$name] = $callback;
+    }
+
+
+    /**
+     * Get a filter
+     *
+     * @param $filter
+     *
+     * @return callable|string
+     *
+     * @throws Exception
+     */
+    public function getFilter($filter)
+    {
+        if (!array_key_exists($filter, $this->filters)) {
+            throw new Exception('Invalid filter');
+        }
+
+        return $this->filters[$filter];
     }
 
 
@@ -178,6 +195,7 @@ class Router
      *
      * @return object
      *
+     * @throws Exception Thrown if on invalid status
      * @throws MethodNotAllowedException
      * @throws NotFoundException
      */
@@ -204,7 +222,7 @@ class Router
                 break;
             default:
                 // It should never come to this point, but just in case.
-                throw new \Exception('An unknown exception occurred when matching routes');
+                throw new Exception('An unknown exception occurred when matching routes');
                 break;
         }
 
@@ -233,12 +251,12 @@ class Router
         $match  = $this->getMatch($method, $path, $host);
 
         if (!$match) {
-            return;
+            return null;
         }
 
         // Run all before filters
         foreach ($match['before'] ?? [] as $filter) {
-            $response = $this->executeCallback($filter, $match['args'], true);
+            $response = $this->resolver->execute($this->getFilter($filter), $match['args']);
             if (!is_null($response)) {
                 // This returned something. Stop and return that response.
                 return $response;
@@ -246,15 +264,14 @@ class Router
         }
 
         // Execute the route callback
-        $response = $this->executeCallback($match['callback'], ($match['args'] ?? []));
+        $response = $this->resolver->execute($match['callback'], ($match['args'] ?? []));
 
         // Run all the after filters, add the response (as a reference) as the first param to all filters
-
         if (!empty($match['after'])) {
             $args = array_merge([&$response], ($match['args'] ?? []));
 
             foreach ($match['after'] ?? [] as $filter) {
-                $after = $this->executeCallback($filter, $args, true);
+                $after = $this->resolver->execute($this->getFilter($filter), $args);
 
                 if ($after) {
                     $response = $after;
@@ -357,67 +374,9 @@ class Router
 
 
     /**
-     * Execute a callback
-     *
-     * @param  mixed   $cb
-     * @param  array   $args
-     * @param  boolean $filter Set if the callback is a filter or not
-     *
-     * @return mixed
-     *
-     * @throws Exception If the filter is unknown
-     * @throws Exception If the callback isn't in one of the accepted formats
-     */
-    public function executeCallback($cb, array $args = [], $filter = false)
-    {
-        if ($filter && is_string($cb)) {
-            $cb = $this->filters[$cb] ?? null;
-        }
-
-        if ($cb instanceof Closure) {
-            return call_user_func_array($cb, $args);
-        }
-
-        if (is_string($cb) && strpos($cb, "@") !== false) {
-            $cb = explode('@', $cb);
-        }
-
-        if (is_array($cb) && count($cb) == 2) {
-            if (!is_object($cb[0])) {
-                $cb = $this->resolver->resolve($cb);
-            }
-
-            if (isset($cb[0], $cb[1]) && is_object($cb[0]) && !method_exists($cb[0], $cb[1])) {
-                $name = get_class($cb[0]);
-                throw new ControllerNotFoundException("Controller '{$name}->{$cb[1]}' not found");
-            }
-
-            return call_user_func_array($cb, $args);
-        }
-
-        if (is_string($cb)) {
-            $check = false;
-
-            if (strpos($cb, "::") !== false) {
-                $parts = explode('::', $cb);
-                $check = $parts[0] && $parts[1] && class_exists($parts[0]) && method_exists($parts[0], $parts[1]);
-            }
-
-            if ($check || function_exists($cb)) {
-                return call_user_func_array($cb, $args);
-            }
-        }
-
-        throw new ControllerNotFoundException('Invalid controller');
-    }
-
-
-    /**
      * Add a resolver for callbacks of the type: ['Classname', 'method']
      *
-     * @param  callable $resolver
-     *
-     * @return $this
+     * @param  Resolver|Closure $resolver
      */
     public function resolver($resolver)
     {
