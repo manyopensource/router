@@ -1,6 +1,7 @@
 <?php namespace Maer\Router;
 
 use Closure;
+use Exception;
 use InvalidArgumentException;
 use Maer\Router\Exceptions\ControllerNotFoundException;
 use Maer\Router\Exceptions\MethodNotAllowedException;
@@ -69,10 +70,9 @@ class Router
      */
     public function __construct(Resolver $resolver = null)
     {
-        $this->resolver($resolver ?? new Resolver);
-        $this->tester = new Tester;
-        $this->routes = new RouteCollection($this->tester);
-        $this->groups = new Groups;
+        if ($resolver) {
+            $this->setResolver($resolver);
+        }
 
         // Set the default error handlers
         $this->notFound = function () {
@@ -82,6 +82,118 @@ class Router
         $this->methodNotAllowed = function () {
             throw new MethodNotAllowedException;
         };
+    }
+
+
+    /**
+     * Set the resolver for callbacks of the type: ['Classname', 'method']
+     *
+     * @param  Resolver $resolver
+     *
+     * @return $this
+     */
+    public function setResolver(Resolver $resolver)
+    {
+        $this->resolver = $resolver;
+
+        return $this;
+    }
+
+
+    /**
+     * Get the resolver
+     *
+     * @return Resolver
+     */
+    public function getResolver()
+    {
+        return is_null($this->resolver)
+            ? $this->resolver = new Resolver
+            : $this->resolver;
+    }
+
+
+    /**
+     * Set the tester
+     *
+     * @param  Tester $tester
+     *
+     * @return $this
+     */
+    public function setTester(Tester $tester)
+    {
+        $this->tester = $tester;
+
+        return $this;
+    }
+
+
+    /**
+     * Get the tester
+     *
+     * @return Tester
+     */
+    public function getTester()
+    {
+        return is_null($this->tester)
+            ? $this->tester = new Tester
+            : $this->tester;
+    }
+
+
+    /**
+     * Set the route collection
+     *
+     * @param  RouteCollection $routes
+     *
+     * @return $this
+     */
+    public function setRouteCollection(RouteCollection $routes)
+    {
+        $this->routes = $routes;
+
+        return $this;
+    }
+
+
+    /**
+     * Get the route collection handler
+     *
+     * @return RouteCollection
+     */
+    public function getRouteCollection()
+    {
+        return is_null($this->routes)
+            ? $this->routes = new RouteCollection($this->getTester())
+            : $this->routes;
+    }
+
+
+    /**
+     * Set the groups handler
+     *
+     * @param  Groups $groups
+     *
+     * @return $this
+     */
+    public function setGroups(Groups $groups)
+    {
+        $this->groups = $groups;
+
+        return $this;
+    }
+
+
+    /**
+     * Get the groups handler
+     *
+     * @return Groups
+     */
+    public function getGroups()
+    {
+        return is_null($this->groups)
+            ? $this->groups = new Groups
+            : $this->groups;
     }
 
 
@@ -104,20 +216,34 @@ class Router
             throw new Exception("Call to undefined method '{$method}'");
         }
 
-        if (isset($args[0]) && is_array($args[0])) {
-            if (count($args[0]) > 1) {
-                if (!isset($args[2]) || !is_array($args[2])) {
-                    $args[2] = [];
-                }
-                $args[2]['name'] = $args[0][1];
-            }
-
-            $args[0] = $args[0][0];
-        }
-
-
         array_unshift($args, $method);
+
         return call_user_func_array([$this, 'add'], $args);
+    }
+
+
+    /**
+     * Add a new route
+     *
+     * @param string          $method
+     * @param string          $pattern
+     * @param callable|string $callback
+     * @param array           $options
+     *
+     * @return $this
+     */
+    public function add($method, $pattern, $callback, array $options = [])
+    {
+        $route            = $this->getGroups()->appendGroupInfo($pattern, $options);
+        $route['methods'] = !is_array($method) ? [$method] : $method;
+
+        // Add the callback to the stack and replace it with the index
+        $this->callbacks[] = $callback;
+        $route['callback'] = count($this->callbacks) - 1;
+
+        $this->getRouteCollection()->add($route);
+
+        return $this;
     }
 
 
@@ -126,47 +252,51 @@ class Router
      *
      * @param  array   $option
      * @param  Closure $callback
+     *
+     * @return $this
      */
     public function group(array $options, Closure $callback)
     {
-        $this->groups->push($options);
+        $this->getGroups()->push($options);
         call_user_func_array($callback, [$this]);
-        $this->groups->pop();
-    }
+        $this->getGroups()->pop();
 
-
-    /**
-     * Add a new route
-     *
-     * @param string $method
-     * @param string $pattern
-     * @param mixed  $callback
-     * @param array  $options
-     */
-    public function add($method, $pattern, $callback, array $options = [])
-    {
-        $route            = $this->groups->appendGroupInfo($pattern, $options);
-        $route['methods'] = !is_array($method) ? [$method] : $method;
-
-        // Add the callback to the stack and replace it with the index
-        $this->callbacks[] = $callback;
-        $route['callback'] = count($this->callbacks) - 1;
-
-        $this->routes->add($route);
+        return $this;
     }
 
 
     /**
      * Add a new route filter
      *
-     * @param  string $name
-     * @param  mixed  $callback
+     * @param  string          $name
+     * @param  callable|string $callback
      *
      * @return $this
      */
     public function filter($name, $callback)
     {
         $this->filters[$name] = $callback;
+
+        return $this;
+    }
+
+
+    /**
+     * Get a filter
+     *
+     * @param  string   $name
+     *
+     * @return mixed
+     *
+     * @throws Exception If the filter is unknown
+     */
+    public function getFilter($name)
+    {
+        if (empty($this->filters[$name])) {
+            throw new Exception("Unknown filter '{$name}'");
+        }
+
+        return $this->filters[$name];
     }
 
 
@@ -180,21 +310,19 @@ class Router
      *
      * @throws MethodNotAllowedException
      * @throws NotFoundException
+     * @throws Exception if an unknown status occurred
      */
     public function getMatch($method = null, $path = null, $host = null)
     {
-        $method   = strtolower($method ?? $this->getRequestMethod());
-        $path     = '/' . trim($path ?? $this->getRequestPath(), '/');
-        $host     = $host ?? $this->getHost();
-        $response = $this->routes->getMatchingRoute($method, $path, $host);
+        list($method, $path, $host) = $this->normalizeRequest($method, $path, $host);
+
+        $response = $this->getRouteCollection()->getMatchingRoute($method, $path, $host);
 
         switch ($response['status']) {
             case self::METHOD_NOT_ALLOWED:
-                http_response_code(self::METHOD_NOT_ALLOWED);
                 $response['match']['callback'] = $this->methodNotAllowed;
                 break;
             case self::NOT_FOUND:
-                http_response_code(self::NOT_FOUND);
                 $response['match']['callback'] = $this->notFound;
                 break;
             case self::OK:
@@ -204,9 +332,11 @@ class Router
                 break;
             default:
                 // It should never come to this point, but just in case.
-                throw new \Exception('An unknown exception occurred when matching routes');
+                throw new Exception('An unknown exception occurred when matching routes');
                 break;
         }
+
+        $response['match']['status'] = $response['status'];
 
         return $response['match'];
     }
@@ -220,15 +350,12 @@ class Router
      *
      * @return mixed
      *
-     * @throws Exception
      * @throws MethodNotAllowedException
      * @throws NotFoundException
      */
     public function dispatch($method = null, $path = null, $host = null)
     {
-        $method = strtolower($method ?? $this->getRequestMethod());
-        $path   = '/' . trim($path ?? $this->getRequestPath(), '/');
-        $host   = $host ?? $this->getHost();
+        list($method, $path, $host) = $this->normalizeRequest($method, $path, $host);
 
         $match  = $this->getMatch($method, $path, $host);
 
@@ -236,9 +363,12 @@ class Router
             return;
         }
 
+        // Set the correct status code
+        http_response_code($match['status']);
+
         // Run all before filters
         foreach ($match['before'] ?? [] as $filter) {
-            $response = $this->executeCallback($filter, $match['args'], true);
+            $response = $this->getResolver()->execute($this->getFilter($filter), $match['args']);
             if (!is_null($response)) {
                 // This returned something. Stop and return that response.
                 return $response;
@@ -246,7 +376,7 @@ class Router
         }
 
         // Execute the route callback
-        $response = $this->executeCallback($match['callback'], ($match['args'] ?? []));
+        $response = $this->getResolver()->execute($match['callback'], ($match['args'] ?? []));
 
         // Run all the after filters, add the response (as a reference) as the first param to all filters
 
@@ -254,7 +384,7 @@ class Router
             $args = array_merge([&$response], ($match['args'] ?? []));
 
             foreach ($match['after'] ?? [] as $filter) {
-                $after = $this->executeCallback($filter, $args, true);
+                $after = $this->getResolver()->execute($this->getFilter($filter), $args);
 
                 if ($after) {
                     $response = $after;
@@ -267,13 +397,32 @@ class Router
 
 
     /**
+     * Normalize the request params
+     *
+     * @param  string $method
+     * @param  string $path
+     * @param  string $host
+     *
+     * @return array ['method', 'path', 'host']
+     */
+    protected function normalizeRequest($method = null, $path = null, $host = null)
+    {
+        return [
+            strtolower($method ?? $this->getRequestMethod()), // Method
+            '/' . trim($path ?? $this->getRequestPath(), '/'), // Path
+            $host ?? $this->getHost(), // Host
+        ];
+    }
+
+
+    /**
      * Get registered tokens
      *
      * @return array
      */
     public function getTokens()
     {
-        return $this->tester->getTokens();
+        return $this->getTester()->getTokens();
     }
 
 
@@ -282,10 +431,14 @@ class Router
      *
      * @param string $name
      * @param string $pattern
+     *
+     * @return $this
      */
     public function addToken($name, $pattern)
     {
-        $this->tester->addToken($name, $pattern);
+        $this->getTester()->addToken($name, $pattern);
+
+        return $this;
     }
 
 
@@ -337,95 +490,30 @@ class Router
     /**
      * Add a callback for not found
      *
-     * @param  string|Closure|array $callback
+     * @param  callable $callback
+     *
+     * @return $this
      */
-    public function notFound($callback)
+    public function notFound(callable $callback)
     {
         $this->notFound = $callback;
+
+        return $this;
     }
 
 
     /**
      * Add a callback for method not allowed
      *
-     * @param  string|Closure|array $callback
-     */
-    public function methodNotAllowed($callback)
-    {
-        $this->methodNotAllowed = $callback;
-    }
-
-
-    /**
-     * Execute a callback
-     *
-     * @param  mixed   $cb
-     * @param  array   $args
-     * @param  boolean $filter Set if the callback is a filter or not
-     *
-     * @return mixed
-     *
-     * @throws Exception If the filter is unknown
-     * @throws Exception If the callback isn't in one of the accepted formats
-     */
-    public function executeCallback($cb, array $args = [], $filter = false)
-    {
-        if ($filter && is_string($cb)) {
-            $cb = $this->filters[$cb] ?? null;
-        }
-
-        if ($cb instanceof Closure) {
-            return call_user_func_array($cb, $args);
-        }
-
-        if (is_string($cb) && strpos($cb, "@") !== false) {
-            $cb = explode('@', $cb);
-        }
-
-        if (is_array($cb) && count($cb) == 2) {
-            if (!is_object($cb[0])) {
-                $cb = $this->resolver->resolve($cb);
-            }
-
-            if (isset($cb[0], $cb[1]) && is_object($cb[0]) && !method_exists($cb[0], $cb[1])) {
-                $name = get_class($cb[0]);
-                throw new ControllerNotFoundException("Controller '{$name}->{$cb[1]}' not found");
-            }
-
-            return call_user_func_array($cb, $args);
-        }
-
-        if (is_string($cb)) {
-            $check = false;
-
-            if (strpos($cb, "::") !== false) {
-                $parts = explode('::', $cb);
-                $check = $parts[0] && $parts[1] && class_exists($parts[0]) && method_exists($parts[0], $parts[1]);
-            }
-
-            if ($check || function_exists($cb)) {
-                return call_user_func_array($cb, $args);
-            }
-        }
-
-        throw new ControllerNotFoundException('Invalid controller');
-    }
-
-
-    /**
-     * Add a resolver for callbacks of the type: ['Classname', 'method']
-     *
-     * @param  callable $resolver
+     * @param  callable $callback
      *
      * @return $this
      */
-    public function resolver($resolver)
+    public function methodNotAllowed(callable $callback)
     {
-        if (!$resolver instanceof Closure && !$resolver instanceof Resolver) {
-            throw new InvalidArgumentException('A resolver must either be a closure or a class extending Maer\Router\Resolver');
-        }
+        $this->methodNotAllowed = $callback;
 
-        $this->resolver = $resolver;
+        return $this;
     }
 
 
@@ -441,6 +529,6 @@ class Router
      */
     public function getRoute($name, array $args = [])
     {
-        return $this->routes->getRouteByName($name, $args);
+        return $this->getRouteCollection()->getRouteByName($name, $args);
     }
 }

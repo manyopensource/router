@@ -46,10 +46,8 @@ class CallbackTest extends PHPUnit_Framework_TestCase
         $r = new Router;
 
         $r->get('/test', ['Controller','index']);
-        $r->get('/test2', 'Controller@index');
 
         $this->assertEquals('instance:foo',  $r->dispatch('get', '/test'), 'Comma separated');
-        $this->assertEquals('instance:foo',  $r->dispatch('get', '/test2'), '@ separated');
     }
 
     /**

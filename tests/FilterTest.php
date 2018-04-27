@@ -74,7 +74,7 @@ class FilterTest extends PHPUnit_Framework_TestCase
     /**
      * Test after filter
      */
-    public function xtestAfterFilter()
+    public function testAfterFilter()
     {
         State::set('after', 0);
 
@@ -137,4 +137,109 @@ class FilterTest extends PHPUnit_Framework_TestCase
 
         $this->assertEquals('12', $r->dispatch('GET', '/test'));
     }
+
+    /**
+     * Test before filter
+     */
+    public function testGroupBeforeFilter()
+    {
+        State::set('before', 0);
+
+        $r = new Router;
+
+        // Normal
+        $r->filter('test', function () {
+            State::set('before', 1);
+        });
+
+        $r->group(['before' => 'test'], function ($r) {
+            $r->get('/test', function () {
+                return "test:" . State::get('before');
+            });
+        });
+
+        $this->assertEquals('test:1', $r->dispatch('GET', '/test'));
+    }
+
+    /**
+     * Test multiple filter
+     */
+    public function testMultipleGroupBeforeFilters()
+    {
+        State::set('before.multiple', []);
+
+        $r = new Router;
+
+        $r->filter('first', function () {
+            State::push('before.multiple', 1);
+        });
+
+        $r->filter('second', function () {
+            State::push('before.multiple', 2);
+        });
+
+        $r->group(['before' => 'first'], function ($r) {
+            $r->group(['before' => 'second'], function ($r) {
+                $r->get('/test', function () {
+                    return implode(',', State::get('before.multiple'));
+                });
+            });
+        });
+
+        $this->assertEquals('1,2', $r->dispatch('GET', '/test'));
+    }
+
+    /**
+     * Test after filter
+     */
+    public function testGroupAfterFilter()
+    {
+        State::set('after', 0);
+
+        $r = new Router;
+
+        // Normal
+        $r->filter('test', function () {
+            State::set('after', 1);
+        });
+
+        $r->group(['after' => 'test'], function ($r) {
+            $r->get('/test', function () {
+                return 'foo';
+            });
+        });
+
+        $this->assertEquals('foo', $r->dispatch('GET', '/test'));
+        $this->assertEquals(1, State::get('after'));
+    }
+
+    /**
+     * Test multiple filter
+     */
+    public function testMultipleGroupAfterFilters()
+    {
+        State::set('after.multiple', []);
+
+        $r = new Router;
+
+        $r->filter('first', function () {
+            State::push('after.multiple', 1);
+        });
+
+        $r->filter('second', function () {
+            State::push('after.multiple', 2);
+        });
+
+        $r->group(['after' => 'first'], function ($r) {
+            $r->group(['after' => 'second'], function ($r) {
+                $r->get('/test', function () {
+                    return 'foo';
+                });
+            });
+        });
+
+        $this->assertEquals('foo', $r->dispatch('GET', '/test'));
+        $this->assertEquals('1,2', implode(',', State::get('after.multiple')));
+    }
+
 }

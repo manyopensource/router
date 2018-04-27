@@ -14,11 +14,11 @@ class NamedRouteTest extends PHPUnit_Framework_TestCase
     {
         $r = new Router;
 
-        $r->get('/', null, [
+        $r->get('/', function () {}, [
             'name' => 'home'
         ]);
 
-        $r->get('/test', null, [
+        $r->get('/test', function () {}, [
             'name' => 'test'
         ]);
 
@@ -33,11 +33,11 @@ class NamedRouteTest extends PHPUnit_Framework_TestCase
     {
         $r = new Router;
 
-        $r->get('/test/(:any)', null, [
+        $r->get('/test/(:any)', function () {}, [
             'name' => 'test.param'
         ]);
 
-        $r->get('/test/(:any)/(:any)?', null, [
+        $r->get('/test/(:any)/(:any)?', function () {}, [
             'name' => 'test.param.optional'
         ]);
 
@@ -55,7 +55,7 @@ class NamedRouteTest extends PHPUnit_Framework_TestCase
     {
         $r = new Router;
 
-        $r->get('/test/(:any)/(:any)?', null, [
+        $r->get('/test/(:any)/(:any)?', function () {}, [
             'name' => 'test.param.optional'
         ]);
 
@@ -73,7 +73,7 @@ class NamedRouteTest extends PHPUnit_Framework_TestCase
     {
         $r = new Router;
 
-        $r->get('/test/(:any)', null, [
+        $r->get('/test/(:any)', function () {}, [
             'name' => 'test.param'
         ]);
 

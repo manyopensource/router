@@ -5,7 +5,7 @@ use Maer\Router\Router;
 /**
  * @coversDefaultClass \Maer\Router\Router
  */
-class GroupTest extends PHPUnit_Framework_TestCase
+class PrefixTest extends PHPUnit_Framework_TestCase
 {
     /**
      * Test prefix
@@ -128,109 +128,5 @@ class GroupTest extends PHPUnit_Framework_TestCase
         $this->assertEquals('/foo/123/bar/abc/hello/world', $r->dispatch('get', '/foo/123/bar/abc/hello/world'));
         $this->assertEquals('/hello/world', $r->dispatch('get', '/hello/world'));
         $this->assertEquals('/hello/world/test', $r->dispatch('get', '/hello/world/test'));
-    }
-
-    /**
-     * Test before filter
-     */
-    public function testBeforeFilter()
-    {
-        State::set('before', 0);
-
-        $r = new Router;
-
-        // Normal
-        $r->filter('test', function () {
-            State::set('before', 1);
-        });
-
-        $r->group(['before' => 'test'], function ($r) {
-            $r->get('/test', function () {
-                return "test:" . State::get('before');
-            });
-        });
-
-        $this->assertEquals('test:1', $r->dispatch('GET', '/test'));
-    }
-
-    /**
-     * Test multiple filter
-     */
-    public function testMultipleBeforeFilters()
-    {
-        State::set('before.multiple', []);
-
-        $r = new Router;
-
-        $r->filter('first', function () {
-            State::push('before.multiple', 1);
-        });
-
-        $r->filter('second', function () {
-            State::push('before.multiple', 2);
-        });
-
-        $r->group(['before' => 'first'], function ($r) {
-            $r->group(['before' => 'second'], function ($r) {
-                $r->get('/test', function () {
-                    return implode(',', State::get('before.multiple'));
-                });
-            });
-        });
-
-        $this->assertEquals('1,2', $r->dispatch('GET', '/test'));
-    }
-
-    /**
-     * Test after filter
-     */
-    public function testAfterFilter()
-    {
-        State::set('after', 0);
-
-        $r = new Router;
-
-        // Normal
-        $r->filter('test', function () {
-            State::set('after', 1);
-        });
-
-        $r->group(['after' => 'test'], function ($r) {
-            $r->get('/test', function () {
-                return 'foo';
-            });
-        });
-
-        $this->assertEquals('foo', $r->dispatch('GET', '/test'));
-        $this->assertEquals(1, State::get('after'));
-    }
-
-    /**
-     * Test multiple filter
-     */
-    public function testMultipleAfterFilters()
-    {
-        State::set('after.multiple', []);
-
-        $r = new Router;
-
-        $r->filter('first', function () {
-            State::push('after.multiple', 1);
-        });
-
-        $r->filter('second', function () {
-            State::push('after.multiple', 2);
-        });
-
-        $r->group(['after' => 'first'], function ($r) {
-            $r->group(['after' => 'second'], function ($r) {
-                $r->get('/test', function () {
-                    return 'foo';
-                });
-            });
-        });
-
-        $this->assertEquals('foo', $r->dispatch('GET', '/test'));
-        $this->assertEquals('1,2', implode(',', State::get('after.multiple')));
     }
 }
