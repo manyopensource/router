@@ -3,7 +3,6 @@
 use Closure;
 use Exception;
 use InvalidArgumentException;
-use Maer\Router\Exceptions\ControllerNotFoundException;
 use Maer\Router\Exceptions\MethodNotAllowedException;
 use Maer\Router\Exceptions\NotFoundException;
 
@@ -203,7 +202,7 @@ class Router
      * @param  string $method
      * @param  array  $args
      *
-     * @throws Exception If the method isn't one of the registerd HTTP verbs
+     * @throws Exception If the method isn't one of the registered HTTP verbs
      *
      * @return $this
      */
@@ -250,7 +249,7 @@ class Router
     /**
      * Add a route group
      *
-     * @param  array   $option
+     * @param  array   $options
      * @param  Closure $callback
      *
      * @return $this
@@ -308,6 +307,7 @@ class Router
      *
      * @return object
      *
+     * @throws Exception Thrown if on invalid status
      * @throws MethodNotAllowedException
      * @throws NotFoundException
      * @throws Exception if an unknown status occurred
@@ -360,7 +360,7 @@ class Router
         $match  = $this->getMatch($method, $path, $host);
 
         if (!$match) {
-            return;
+            return null;
         }
 
         // Set the correct status code
@@ -379,7 +379,6 @@ class Router
         $response = $this->getResolver()->execute($match['callback'], ($match['args'] ?? []));
 
         // Run all the after filters, add the response (as a reference) as the first param to all filters
-
         if (!empty($match['after'])) {
             $args = array_merge([&$response], ($match['args'] ?? []));
 

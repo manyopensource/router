@@ -1,6 +1,7 @@
 <?php namespace Maer\Router;
 
 use Maer\Router\Exceptions\ControllerNotFoundException;
+use Exception;
 
 class Resolver
 {
